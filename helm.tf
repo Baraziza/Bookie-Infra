@@ -144,31 +144,174 @@ resource "kubernetes_storage_class" "ebs_sc" {
   ]
 }
 
-resource "helm_release" "bookie" {
-  name             = "bookie"
-  namespace        = "bookie-app"
+resource "helm_release" "argocd" {
+  name             = "argocd"
+  namespace        = "argocd"
   create_namespace = true
-  force_update     = true
-  recreate_pods    = true
-  chart            = "./helm-charts/bookie/bookie"
-  timeout          = 600
+  repository       = "https://argoproj.github.io/argo-helm"
+  chart            = "argo-cd"
+  version          = "5.53.6"
+  timeout          = 900
   wait             = true
+  atomic           = true
+
+
+  set {
+    name  = "controller.enableStatefulSet"
+    value = "false"
+  }
+
+  set {
+    name  = "configs.secret.argocdServerAdminPassword"
+    value = data.aws_secretsmanager_secret_version.argocd_password.secret_string
+  }
+
+  set {
+    name  = "redis.enabled"
+    value = "true"
+  }
+
+  set {
+    name  = "redis-ha.enabled"
+    value = "false"
+  }
+
+    set {
+    name  = "server.ingress.enabled"
+    value = "true"
+  }
+
+  set {
+    name  = "server.ingress.ingressClassName"
+    value = "nginx"
+  }
+
+  set {
+    name  = "server.ingress.hosts[0]"
+    value = "argocd.baraziza.online"
+  }
+
+    set {
+    name  = "server.ingress.annotations.nginx\\.ingress\\.kubernetes\\.io/ssl-passthrough"
+    value = "true"
+  }
+
+  set {
+    name  = "server.ingress.annotations.nginx\\.ingress\\.kubernetes\\.io/backend-protocol"
+    value = "HTTPS"
+  }
+
+  set {
+    name  = "server.ingress.annotations.nginx\\.ingress\\.kubernetes\\.io/force-ssl-redirect"
+    value = "true"
+  }
+
+  set {
+    name  = "server.ingress.tls[0].secretName"
+    value = "argocd-server-tls"
+  }
+
+  set {
+    name  = "server.ingress.tls[0].hosts[0]"
+    value = "argocd.baraziza.online"
+  }
+
+  set {
+    name  = "server.ingress.annotations.kubernetes\\.io/ingress\\.class"
+    value = "nginx"
+  }
+
+  set {
+    name  = "server.ingress.annotations.cert-manager\\.io/cluster-issuer"
+    value = "letsencrypt-prod"
+  }
 
   values = [
     <<-EOT
-    mysql:
-      storage:
-        storageClass: ebs-sc
-        size: 10Gi
-    ingress:
-      host: dev.baraziza.online
+    server:
+      extraArgs:
+        - --insecure
+    configs:
+      cm:
+        url: https://argocd.baraziza.online
+    
+    # Reduce resource requests even further
+    controller:
+      resources:
+        limits:
+          cpu: "200m"
+          memory: "256Mi"
+        requests:
+          cpu: "100m"
+          memory: "128Mi"
+    server:
+      resources:
+        limits:
+          cpu: "100m"
+          memory: "128Mi"
+        requests:
+          cpu: "50m"
+          memory: "64Mi"
+    repoServer:
+      resources:
+        limits:
+          cpu: "100m"
+          memory: "256Mi"
+        requests:
+          cpu: "50m"
+          memory: "64Mi"
+    redis:
+      resources:
+        limits:
+          cpu: "100m"
+          memory: "128Mi"
+        requests:
+          cpu: "50m"
+          memory: "64Mi"
+    dex:
+      resources:
+        limits:
+          cpu: "100m"
+          memory: "128Mi"
+        requests:
+          cpu: "50m"
+          memory: "64Mi"
+    applicationSet:
+      enabled: false
+    notifications:
+      enabled: false
     EOT
   ]
+}
 
-  depends_on = [
-    helm_release.cert_manager,
-    helm_release.ingress_nginx,
-    kubernetes_storage_class.ebs_sc,
-    helm_release.aws_ebs_csi_driver
-  ]
+resource "kubernetes_manifest" "bookie_application" {
+  depends_on = [helm_release.argocd]
+
+  manifest = {
+    apiVersion = "argoproj.io/v1alpha1"
+    kind       = "Application"
+    metadata = {
+      name      = "bookie-app"
+      namespace = "argocd"
+    }
+    spec = {
+      project = "default"
+      source = {
+        repoURL        = "https://github.com/Baraziza/Bookie-GitOps"
+        targetRevision = "HEAD"
+        path           = "k8s-manifests/overlays/dev"
+      }
+      destination = {
+        server    = "https://kubernetes.default.svc"
+        namespace = "bookie-app"
+      }
+      syncPolicy = {
+        automated = {
+          prune    = true
+          selfHeal = true
+        }
+        syncOptions = ["CreateNamespace=true"]
+      }
+    }
+  }
 }

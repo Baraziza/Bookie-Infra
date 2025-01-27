@@ -51,3 +51,4 @@ module "nodegroup" {
   cluster_security_group_id = module.eks.cluster_security_group_id
   depends_on       = [module.eks]
 }
+

@@ -13,9 +13,14 @@ data "kubernetes_service" "ingress" {
 resource "null_resource" "update_dns" {
   depends_on = [helm_release.ingress_nginx]
 
+    triggers = {
+    ingress_nginx_version = helm_release.ingress_nginx.version
+    argocd_version       = helm_release.argocd.version
+  }
+
   provisioner "local-exec" {
     command = <<-EOT
-      # Wait for load balancer to be ready
+     # Wait for load balancer to be ready
       while ! kubectl get svc -n ingress-nginx ingress-nginx-controller-controller >/dev/null 2>&1; do
         echo "Waiting for ingress controller service..."
         sleep 10
@@ -27,16 +32,29 @@ resource "null_resource" "update_dns" {
       done
       
       LB_HOSTNAME=$(kubectl get svc -n ingress-nginx ingress-nginx-controller-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+      
+      # Update both dev and argocd DNS records
       aws route53 change-resource-record-sets --hosted-zone-id ${data.aws_route53_zone.domain.zone_id} --change-batch '{
-        "Changes": [{
-          "Action": "UPSERT",
-          "ResourceRecordSet": {
-            "Name": "dev.baraziza.online.",
-            "Type": "CNAME",
-            "TTL": 300,
-            "ResourceRecords": [{"Value":"'$LB_HOSTNAME'"}]
+        "Changes": [
+          {
+            "Action": "UPSERT",
+            "ResourceRecordSet": {
+              "Name": "dev.baraziza.online.",
+              "Type": "CNAME",
+              "TTL": 300,
+              "ResourceRecords": [{"Value":"'$LB_HOSTNAME'"}]
+            }
+          },
+          {
+            "Action": "UPSERT",
+            "ResourceRecordSet": {
+              "Name": "argocd.baraziza.online.",
+              "Type": "CNAME",
+              "TTL": 300,
+              "ResourceRecords": [{"Value":"'$LB_HOSTNAME'"}]
+            }
           }
-        }]
+        ]
       }'
     EOT
   }

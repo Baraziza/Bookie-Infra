@@ -3,3 +3,4 @@ __pycache__
 .terraform
 .terraform.lock.hcl
 .env
+secrets.tf
