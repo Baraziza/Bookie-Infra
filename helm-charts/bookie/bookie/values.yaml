@@ -1,0 +1,28 @@
+mysql:
+  image: mysql:5.7
+  rootPassword: rootpass
+  database: bookie_db
+  user: bookie_user
+  password: bookie_pass
+  storage:
+    storageClass: ebs-sc
+    size: 10Gi
+
+bookie:
+  image: baraziza/bookie:latest
+  replicaCount: 2
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+ingress:
+  enabled: true
+  className: nginx
+  host: dev.baraziza.online
+  tls:
+    enabled: true
+    secretName: bookie-tls

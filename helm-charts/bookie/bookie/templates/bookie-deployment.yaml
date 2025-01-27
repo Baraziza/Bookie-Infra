@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bookie
+spec:
+  replicas: {{ .Values.bookie.replicaCount }}
+  selector:
+    matchLabels:
+      app: bookie
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: bookie
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - bookie
+              topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: wait-for-mysql
+          image: mysql:5.7
+          command:
+            - sh
+            - -c
+            - |
+              until mysqladmin ping -h mysql -u"${MYSQL_USER}" -p"${MYSQL_PASSWORD}" --silent; do
+                echo "waiting for mysql"
+                sleep 2
+              done
+          env:
+            - name: MYSQL_USER
+              value: {{ .Values.mysql.user }}
+            - name: MYSQL_PASSWORD
+              value: {{ .Values.mysql.password }}
+      containers:
+        - name: bookie
+          image: {{ .Values.bookie.image }}
+          imagePullPolicy: Always
+          resources:
+{{ toYaml .Values.bookie.resources | indent 12 }}
+          ports:
+            - containerPort: 5000
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          env:
+            - name: FLASK_ENV
+              value: "development"
+            - name: DATABASE_URL
+              value: "mysql+pymysql://{{ .Values.mysql.user }}:{{ .Values.mysql.password }}@mysql/{{ .Values.mysql.database }}"
