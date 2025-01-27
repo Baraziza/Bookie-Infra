@@ -136,9 +136,17 @@ resource "helm_release" "aws_ebs_csi_driver" {
 resource "kubernetes_storage_class" "ebs_sc" {
   metadata {
     name = "ebs-sc"
+    annotations = {
+      "storageclass.kubernetes.io/is-default-class" = "true"
+    }
   }
   storage_provisioner = "ebs.csi.aws.com"
   volume_binding_mode = "WaitForFirstConsumer"
+  reclaim_policy = "Delete"
+  parameters = {
+    type = "gp3"
+    encrypted = "true"
+  }
   depends_on = [
     helm_release.aws_ebs_csi_driver
   ]
@@ -280,6 +288,11 @@ resource "helm_release" "argocd" {
       enabled: false
     notifications:
       enabled: false
+    server:
+      persistentVolume:
+        enabled: true
+        storageClass: ebs-sc
+        size: 5Gi
     EOT
   ]
 }
@@ -315,3 +328,97 @@ resource "kubernetes_manifest" "bookie_application" {
     }
   }
 }
+
+resource "kubernetes_manifest" "prometheus" {
+  depends_on = [helm_release.argocd]
+
+  manifest = {
+    apiVersion = "argoproj.io/v1alpha1"
+    kind       = "Application"
+    metadata = {
+      name      = "prometheus"
+      namespace = "argocd"
+    }
+    spec = {
+      project = "default"
+      source = {
+        repoURL        = "https://prometheus-community.github.io/helm-charts"
+        chart          = "prometheus"
+        targetRevision = "25.3.0"
+        helm = {
+          values = <<-EOT
+            server:
+              persistentVolume:
+                enabled: true
+                storageClass: ebs-sc
+                size: 5Gi
+          EOT
+        }
+      }
+      destination = {
+        server    = "https://kubernetes.default.svc"
+        namespace = "monitoring"
+      }
+      syncPolicy = {
+        automated = {
+          prune    = true
+          selfHeal = true
+        }
+        syncOptions = ["CreateNamespace=true"]
+      }
+    }
+  }
+}
+
+resource "kubernetes_manifest" "grafana" {
+  depends_on = [helm_release.argocd]
+
+  manifest = {
+    apiVersion = "argoproj.io/v1alpha1"
+    kind       = "Application"
+    metadata = {
+      name      = "grafana"
+      namespace = "argocd"
+    }
+    spec = {
+      project = "default"
+      source = {
+        repoURL        = "https://grafana.github.io/helm-charts"
+        chart          = "grafana"
+        targetRevision = "6.58.8"
+        helm = {
+          values = <<-EOT
+            adminPassword: "grafana123"
+            persistence:
+              enabled: true
+              storageClass: ebs-sc
+              size: 2Gi
+            ingress:
+              enabled: true
+              ingressClassName: nginx
+              annotations:
+                cert-manager.io/cluster-issuer: letsencrypt-prod
+              hosts:
+                - grafana.baraziza.online
+              tls:
+                - secretName: grafana-tls
+                  hosts:
+                    - grafana.baraziza.online
+          EOT
+        }
+      }
+      destination = {
+        server    = "https://kubernetes.default.svc"
+        namespace = "monitoring"
+      }
+      syncPolicy = {
+        automated = {
+          prune    = true
+          selfHeal = true
+        }
+        syncOptions = ["CreateNamespace=true"]
+      }
+    }
+  }
+}
+

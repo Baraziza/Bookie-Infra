@@ -16,6 +16,8 @@ resource "null_resource" "update_dns" {
     triggers = {
     ingress_nginx_version = helm_release.ingress_nginx.version
     argocd_version       = helm_release.argocd.version
+    prometheus_version   = kubernetes_manifest.prometheus.manifest.spec.source.targetRevision
+    grafana_version     = kubernetes_manifest.grafana.manifest.spec.source.targetRevision
   }
 
   provisioner "local-exec" {
@@ -33,7 +35,7 @@ resource "null_resource" "update_dns" {
       
       LB_HOSTNAME=$(kubectl get svc -n ingress-nginx ingress-nginx-controller-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
       
-      # Update both dev and argocd DNS records
+      # Update DNS records
       aws route53 change-resource-record-sets --hosted-zone-id ${data.aws_route53_zone.domain.zone_id} --change-batch '{
         "Changes": [
           {
@@ -49,6 +51,15 @@ resource "null_resource" "update_dns" {
             "Action": "UPSERT",
             "ResourceRecordSet": {
               "Name": "argocd.baraziza.online.",
+              "Type": "CNAME",
+              "TTL": 300,
+              "ResourceRecords": [{"Value":"'$LB_HOSTNAME'"}]
+            }
+          },
+          {
+            "Action": "UPSERT",
+            "ResourceRecordSet": {
+              "Name": "grafana.baraziza.online.",
               "Type": "CNAME",
               "TTL": 300,
               "ResourceRecords": [{"Value":"'$LB_HOSTNAME'"}]
