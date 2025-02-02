@@ -1,20 +1,8 @@
-provider "helm" {
-  kubernetes {
-    host                   = module.eks.eks_cluster_endpoint
-    cluster_ca_certificate = base64decode(module.eks.eks_cluster_certificate_authority)
-    exec {
-      api_version = "client.authentication.k8s.io/v1beta1"
-      command     = "aws"
-      args        = ["eks", "get-token", "--cluster-name", var.cluster_name]
-    }
-  }
-}
-
 resource "null_resource" "update_kubeconfig" {
   depends_on = [module.eks]
 
   provisioner "local-exec" {
-    command = "aws eks update-kubeconfig --name ${var.cluster_name} --region ${var.aws_region}"
+    command = "aws eks update-kubeconfig --name ${var.cluster_name} --region ${var.aws_region} --alias ${var.cluster_name}"
   }
 }
 
@@ -242,7 +230,11 @@ resource "helm_release" "argocd" {
     configs:
       cm:
         url: https://argocd.baraziza.online
-    
+        # Enable application auto-creation
+        configManagementPlugins: |
+          - name: argocd-vault-plugin
+        applicationInstanceLabelKey: argocd.argoproj.io/instance
+
     # Reduce resource requests even further
     controller:
       resources:
@@ -297,9 +289,8 @@ resource "helm_release" "argocd" {
   ]
 }
 
+# Separate application manifests
 resource "kubernetes_manifest" "bookie_application" {
-  depends_on = [helm_release.argocd]
-
   manifest = {
     apiVersion = "argoproj.io/v1alpha1"
     kind       = "Application"
@@ -327,11 +318,10 @@ resource "kubernetes_manifest" "bookie_application" {
       }
     }
   }
+  depends_on = [helm_release.argocd]
 }
 
 resource "kubernetes_manifest" "prometheus" {
-  depends_on = [helm_release.argocd]
-
   manifest = {
     apiVersion = "argoproj.io/v1alpha1"
     kind       = "Application"
@@ -368,11 +358,10 @@ resource "kubernetes_manifest" "prometheus" {
       }
     }
   }
+  depends_on = [helm_release.argocd]
 }
 
 resource "kubernetes_manifest" "grafana" {
-  depends_on = [helm_release.argocd]
-
   manifest = {
     apiVersion = "argoproj.io/v1alpha1"
     kind       = "Application"
@@ -418,6 +407,30 @@ resource "kubernetes_manifest" "grafana" {
         }
         syncOptions = ["CreateNamespace=true"]
       }
+    }
+  }
+  depends_on = [helm_release.argocd]
+}
+
+resource "null_resource" "delete_pvcs" {
+  depends_on = [kubernetes_manifest.grafana, kubernetes_manifest.prometheus]
+
+  triggers = {
+    cluster_name = var.cluster_name
+    region       = var.aws_region
+  }
+
+  provisioner "local-exec" {
+    when    = destroy
+    command = <<-EOT
+      # Delete PVCs in monitoring namespace
+      kubectl delete pvc --all -n monitoring || true
+      # Wait for PVCs to be deleted
+      sleep 10
+    EOT
+
+    environment = {
+      KUBECONFIG = "~/.kube/config"
     }
   }
 }

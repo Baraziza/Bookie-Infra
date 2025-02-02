@@ -16,8 +16,10 @@ resource "null_resource" "update_dns" {
     triggers = {
     ingress_nginx_version = helm_release.ingress_nginx.version
     argocd_version       = helm_release.argocd.version
-    prometheus_version   = kubernetes_manifest.prometheus.manifest.spec.source.targetRevision
-    grafana_version     = kubernetes_manifest.grafana.manifest.spec.source.targetRevision
+    argocd_apps_version = helm_release.argocd.version
+    bookie_app_version = kubernetes_manifest.bookie_application.manifest.spec.source.targetRevision
+    prometheus_version = kubernetes_manifest.prometheus.manifest.spec.source.targetRevision
+    grafana_version = kubernetes_manifest.grafana.manifest.spec.source.targetRevision
   }
 
   provisioner "local-exec" {
