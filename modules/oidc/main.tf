@@ -15,7 +15,6 @@ output "oidc_provider_arn" {
   value = aws_iam_openid_connect_provider.eks.arn
 }
 
-# Add trust policy for EBS CSI driver
 resource "aws_iam_role" "ebs_csi_driver_trust" {
   name = "eks-ebs-csi-driver-trust"
 

@@ -36,7 +36,7 @@ resource "helm_release" "cert_manager" {
     EOT
   ]
 
-  # Wait for CRDs to be ready
+
   set {
     name  = "webhook.timeoutSeconds"
     value = "30"
@@ -289,7 +289,6 @@ resource "helm_release" "argocd" {
   ]
 }
 
-# Separate application manifests
 resource "kubernetes_manifest" "bookie_application" {
   manifest = {
     apiVersion = "argoproj.io/v1alpha1"
@@ -318,7 +317,12 @@ resource "kubernetes_manifest" "bookie_application" {
       }
     }
   }
-  depends_on = [helm_release.argocd]
+  depends_on = [
+    helm_release.argocd,
+    module.eks,
+    null_resource.update_kubeconfig,
+    kubernetes_storage_class.ebs_sc
+  ]
 }
 
 resource "kubernetes_manifest" "prometheus" {
@@ -358,7 +362,12 @@ resource "kubernetes_manifest" "prometheus" {
       }
     }
   }
-  depends_on = [helm_release.argocd]
+  depends_on = [
+    helm_release.argocd,
+    module.eks,
+    null_resource.update_kubeconfig,
+    kubernetes_storage_class.ebs_sc
+  ]
 }
 
 resource "kubernetes_manifest" "grafana" {
@@ -409,7 +418,12 @@ resource "kubernetes_manifest" "grafana" {
       }
     }
   }
-  depends_on = [helm_release.argocd]
+  depends_on = [
+    helm_release.argocd,
+    module.eks,
+    null_resource.update_kubeconfig,
+    kubernetes_storage_class.ebs_sc
+  ]
 }
 
 resource "null_resource" "delete_pvcs" {

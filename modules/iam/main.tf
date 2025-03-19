@@ -1,4 +1,4 @@
-# IAM Role for EKS Cluster
+
 resource "aws_iam_role" "eks_cluster_role" {
   name = "${var.cluster_name}-eks-cluster-role"
 
@@ -28,7 +28,6 @@ resource "aws_iam_role_policy_attachment" "eks_cluster_ebs_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
 }
 
-# Add inline policy for OIDC provider
 resource "aws_iam_role_policy" "eks_cluster_oidc" {
   name = "${var.cluster_name}-eks-cluster-oidc"
   role = aws_iam_role.eks_cluster_role.name
@@ -47,7 +46,6 @@ resource "aws_iam_role_policy" "eks_cluster_oidc" {
   })
 }
 
-# IAM Role for EKS Worker Nodes
 resource "aws_iam_role" "eks_node_role" {
   name = "${var.cluster_name}-eks-node-role"
 
@@ -87,6 +85,5 @@ resource "aws_iam_role_policy_attachment" "eks_node_ebs_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
 }
 
-# EBS CSI Driver Role
 data "aws_caller_identity" "current" {}
 

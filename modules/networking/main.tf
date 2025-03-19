@@ -40,7 +40,6 @@ resource "aws_subnet" "private_subnets" {
   }
 }
 
-# Add internet gateway and route tables
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.eks_vpc.id
 
